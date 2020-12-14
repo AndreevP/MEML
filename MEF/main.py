@@ -374,7 +374,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=0,
                         help='seed')
     parser.add_argument('--matrix_exp', type=str, default='default',
-                        choices=['default', 'optimized_taylor'],
+                        choices=['default', 'optimized_taylor', 'pade', 'second_limit', 'default_full'],
                         help='method for computing of matrix exponential')
     
     parse_args = parser.parse_args()

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import math
 
 eps = 1e-8
 
@@ -54,34 +55,109 @@ def postprocess(image, bits):
     return image
 
 
+b = [math.factorial(2 * 5 - j) * math.factorial(5) \
+     / math.factorial(2 * 5) / math.factorial(5 - j) \
+     / math.factorial(j) for j in range(6)]
+
+K = 6 #number of matmuls
+
+def pade(A):
+    if (A.max().item() == 0):
+        return A + torch.eye(A.shape[-1]).to(A)
+    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-4)
+    A = A / 2**k
+    A2 = A @ A
+    A4 = A2 @ A2
+    U = A @ (b[5] * A4 + b[3] * A2 + b[1] * torch.eye(A.shape[-1]).to(A))
+    V = b[4] * A4 + b[2] * A2 + b[0] * torch.eye(A.shape[-1]).to(A)
+    E, _ = torch.solve(U + V, -U + V)
+    for i in range(k):
+        E = E @ E
+    return E
+
+
+x3 = 2./3
+sq = math.sqrt(177)
+y = [1, 1, (857 - 58 * sq)/630]
+x = [0, x3 * (1. + sq)/88, (1 + sq) /352 * x3, x3, (-271 + 29 *sq)/315/x3,
+    11* (-1 + sq)/1260 /x3, 11 * (-9 + sq)/5040/x3, (89 - sq)/5040/(x3**2)]
+
+def optimized_taylor(A):
+    if (A.max().item() == 0):
+        return A + torch.eye(A.shape[-1]).to(A)  
+    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-3)
+    A = A / 2**k
+    A2 = A @ A
+    A4 = A2 @ (x[1] * A + x[2] * A2)
+    A8 = (x3 * A2 + A4) @ (x[4] * torch.eye(A.shape[-1]).to(A) + x[5] * A + x[6] * A2 + x[7] * A4)
+    E = y[0] * torch.eye(A.shape[-1]).to(A) + y[1] * A + y[2] * A2 + A8
+    for i in range(k):
+        E = E @ E
+    return E  
+
+
+def second_limit(A):
+    if (A.max().item() == 0):
+        return A + torch.eye(A.shape[-1]).to(A)
+    y = A / 2**K + torch.eye(A.shape[-1]).to(A)
+    for k in range(K):
+        y = y @ y
+    return y
+
+
+def default(x):
+    if (x.max().item() == 0):
+        return x + torch.eye(x.shape[-1]).to(x)
+    scale = min(int(np.ceil(np.log2(np.max([torch.norm(x, p=1, dim=-1).max().item(), 0.5]))) + 1), K-3)
+    x = x / (2 ** scale)
+    s = torch.eye(x.size(-1), device=x.device)
+    t = x
+    k = 2
+   # while torch.norm(t, p=1, dim=-1).max().item() > eps:
+    for i in range(K - scale):
+        s = s + t
+        t = torch.matmul(x, t) / k
+        k = k + 1
+    for i in range(scale):
+        s = torch.matmul(s, s)
+    return s
+
+def default_full(x):
+    if (x.max().item() == 0):
+        return x + torch.eye(x.shape[-1]).to(x)
+    scale = int(np.ceil(np.log2(np.max([torch.norm(x, p=1, dim=-1).max().item(), 0.5]))) + 1)
+    x = x / (2 ** scale)
+    s = torch.eye(x.size(-1), device=x.device)
+    t = x
+    k = 2
+    while torch.norm(t, p=1, dim=-1).max().item() > eps:
+        s = s + t
+        t = torch.matmul(x, t) / k
+        k = k + 1
+    for i in range(scale):
+        s = torch.matmul(s, s)
+    return s
+
+
+D = {"default" : default, "optimized_taylor" : optimized_taylor, "pade": pade, "second_limit" : second_limit,
+    "default_full" : default_full}
+
 def expm(x, method="default"):
     """
     compute the matrix exponential: \sum_{k=0}^{\infty}\frac{x^{k}}{k!}
     """
-    if method == "default":
-        scale = int(np.ceil(np.log2(np.max([torch.norm(x, p=1, dim=-1).max().item(), 0.5]))) + 1)
-        x = x / (2 ** scale)
-        s = torch.eye(x.size(-1), device=x.device)
-        t = x
-        k = 2
-        while torch.norm(t, p=1, dim=-1).max().item() > eps:
-            s = s + t
-            t = torch.matmul(x, t) / k
-            k = k + 1
-        for i in range(scale):
-            s = torch.matmul(s, s)
-    elif method == "optimized_taylor":
-        shape = x.shape
-        x = x.reshape((-1, shape[-2], shape[-1]))
-        s = torch.matrix_exp(x)
-        s = s.reshape(shape)
-    return s
+    shape = x.shape
+    x = x.reshape((-1, shape[-2], shape[-1]))
+    E = D[method](x)
+    E = E.reshape(shape)
+    return E
 
 
 def series(x, method="default"):
     """
     compute the matrix series: \sum_{k=0}^{\infty}\frac{x^{k}}{(k+1)!}
     """
+    
     if method == "default":
         s = torch.eye(x.size(-1), device=x.device)
         t = x / 2
@@ -91,6 +167,6 @@ def series(x, method="default"):
             s = s + t
             t = torch.matmul(x, t) / k
             k = k + 1
-    elif method == "optimized_taylor":
-        s = torch.inverse(x) @ torch.matrix_exp(x) - torch.eye(s.shape[-1])
+    else:
+        s = torch.inverse(x) @ D[method](x) - torch.eye(s.shape[-1])
     return s
