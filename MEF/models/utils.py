@@ -64,7 +64,7 @@ K = 6 #number of matmuls
 def pade(A):
     if (A.max().item() == 0):
         return A + torch.eye(A.shape[-1]).to(A)
-    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-4)
+    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-5)
     A = A / 2**k
     A2 = A @ A
     A4 = A2 @ A2
