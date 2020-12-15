@@ -113,8 +113,33 @@ class TaylorExpm(Expm):
             s = torch.matmul(s, s)
         return s
 
+class OptimizedTaylor(Expm):
+
+    def __init__(self, n_matmuls):
+        super().__init__()
+        self.n_matmuls = n_matmuls
+        x3 = 2./3
+        sq = math.sqrt(177)
+        self.y = [1, 1, (857 - 58 * sq)/630]
+        self.x = [0, x3 * (1. + sq)/88, (1 + sq) /352 * x3, x3, (-271 + 29 *sq)/315/x3,
+            11* (-1 + sq)/1260 /x3, 11 * (-9 + sq)/5040/x3, (89 - sq)/5040/(x3**2)]
+        self.x3 = x3
+    
+    def compute_expm(self, A):
+        if (A.max().item() == 0):
+            return A + torch.eye(A.shape[-1]).to(A)  
+        k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), self.n_matmuls-3)
+        A = A / 2**k
+        A2 = A @ A
+        A4 = A2 @ (self.x[1] * A + self.x[2] * A2)
+        A8 = (self.x3 * A2 + A4) @ (self.x[4] * torch.eye(A.shape[-1]).to(A) + self.x[5] * A + self.x[6] * A2 + self.x[7] * A4)
+        E = self.y[0] * torch.eye(A.shape[-1]).to(A) + self.y[1] * A + self.y[2] * A2 + A8
+        for i in range(k):
+            E = E @ E
+        return E  
+
 if __name__ == "__main__":
     A = torch.rand((3, 3))
-    pexpm = PadeExpm(5)
+    pexpm = OptimizedTaylor(5)
     pexpm(A)
 
