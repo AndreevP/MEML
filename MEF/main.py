@@ -75,7 +75,7 @@ def main(args):
         save_dir = get_save_dir(args)
         model = get_model(args)
         model.to(device)
-        model = torch.nn.DataParallel(model)
+      #  model = torch.nn.DataParallel(model)
         optimizer = get_optimizer(args, model)
         model_dir = os.path.join(save_dir, 'models')
         file_name = 'epoch_{}.pth'.format(args.sample_epoch)
@@ -373,9 +373,9 @@ if __name__ == '__main__':
                         help='polyak average')
     parser.add_argument('--seed', type=int, default=0,
                         help='seed')
-    parser.add_argument('--matrix_exp', type=str, default='default',
-                        choices=['default', 'optimized_taylor', 'pade', 'second_limit', 'default_full'],
-                        help='method for computing of matrix exponential')
+    parser.add_argument('--matrix_exp', type=str, default='default 0',
+                        choices=['default', 'optimized_taylor', 'pade', 'second_limit', 'default_full', "pade3"],
+                        help='method for computing of matrix exponential (default, optimized_taylor, pade, second_limit, default_full, pade3) + space + number of matmuls (will limit the depth of scaling and squaring) (0 corresponds to infinity)')
     
     parse_args = parser.parse_args()
 

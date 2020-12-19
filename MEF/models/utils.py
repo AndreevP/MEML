@@ -59,18 +59,36 @@ b = [math.factorial(2 * 5 - j) * math.factorial(5) \
      / math.factorial(2 * 5) / math.factorial(5 - j) \
      / math.factorial(j) for j in range(6)]
 
-K = 6 #number of matmuls
+#K_def = 4 #number of matmuls
 
-def pade(A):
+def pade(A, K):
     if (A.max().item() == 0):
         return A + torch.eye(A.shape[-1]).to(A)
-    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-4)
+    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-5)
     A = A / 2**k
     A2 = A @ A
     A4 = A2 @ A2
     U = A @ (b[5] * A4 + b[3] * A2 + b[1] * torch.eye(A.shape[-1]).to(A))
     V = b[4] * A4 + b[2] * A2 + b[0] * torch.eye(A.shape[-1]).to(A)
-    E, _ = torch.solve(U + V, -U + V)
+    #E, _ = torch.solve(U + V, -U + V)
+    E = torch.inverse(-U + V) @ (U + V)
+    for i in range(k):
+        E = E @ E
+    return E
+
+B = [math.factorial(2 * 3 - j) * math.factorial(3) \
+     / math.factorial(2 * 3) / math.factorial(3 - j) \
+     / math.factorial(j) for j in range(4)]
+def pade3(A, K):
+    if (A.max().item() == 0):
+        return A + torch.eye(A.shape[-1]).to(A)
+    k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-4)
+    A = A / 2**k
+    A2 = A @ A
+    U = A @ (B[3] * A2 + B[1] * torch.eye(A.shape[-1]).to(A))
+    V =  B[2] * A2 + B[0] * torch.eye(A.shape[-1]).to(A)
+    #E, _ = torch.solve(U + V, -U + V)
+    E = torch.inverse(-U + V) @ (U + V)
     for i in range(k):
         E = E @ E
     return E
@@ -82,7 +100,7 @@ y = [1, 1, (857 - 58 * sq)/630]
 x = [0, x3 * (1. + sq)/88, (1 + sq) /352 * x3, x3, (-271 + 29 *sq)/315/x3,
     11* (-1 + sq)/1260 /x3, 11 * (-9 + sq)/5040/x3, (89 - sq)/5040/(x3**2)]
 
-def optimized_taylor(A):
+def optimized_taylor(A, K):
     if (A.max().item() == 0):
         return A + torch.eye(A.shape[-1]).to(A)  
     k = min(int(np.ceil(np.log2(np.max([torch.norm(A, p=1, dim=-1).max().item(), 0.5]))) + 1), K-3)
@@ -96,7 +114,7 @@ def optimized_taylor(A):
     return E  
 
 
-def second_limit(A):
+def second_limit(A, K):
     if (A.max().item() == 0):
         return A + torch.eye(A.shape[-1]).to(A)
     y = A / 2**K + torch.eye(A.shape[-1]).to(A)
@@ -105,7 +123,7 @@ def second_limit(A):
     return y
 
 
-def default(x):
+def default(x, K):
     if (x.max().item() == 0):
         return x + torch.eye(x.shape[-1]).to(x)
     scale = min(int(np.ceil(np.log2(np.max([torch.norm(x, p=1, dim=-1).max().item(), 0.5]))) + 1), K-3)
@@ -118,11 +136,13 @@ def default(x):
         s = s + t
         t = torch.matmul(x, t) / k
         k = k + 1
+        if torch.norm(t, p=1, dim=-1).max().item() < eps:
+            break
     for i in range(scale):
         s = torch.matmul(s, s)
     return s
 
-def default_full(x):
+def default_full(x, K=0):
     if (x.max().item() == 0):
         return x + torch.eye(x.shape[-1]).to(x)
     scale = int(np.ceil(np.log2(np.max([torch.norm(x, p=1, dim=-1).max().item(), 0.5]))) + 1)
@@ -140,24 +160,33 @@ def default_full(x):
 
 
 D = {"default" : default, "optimized_taylor" : optimized_taylor, "pade": pade, "second_limit" : second_limit,
-    "default_full" : default_full}
+    "default_full" : default_full, "pade3" : pade3}
 
-def expm(x, method="default"):
+def expm(x, method="default 0"):
     """
     compute the matrix exponential: \sum_{k=0}^{\infty}\frac{x^{k}}{k!}
     """
+    i = method.find(" ")
+    K = int(method[i+1:])
+    if K == 0:
+        K = 1000
+    method = method[:i]
     shape = x.shape
     x = x.reshape((-1, shape[-2], shape[-1]))
-    E = D[method](x)
+    E = D[method](x, K)
     E = E.reshape(shape)
     return E
 
 
-def series(x, method="default"):
+def series(x, method="default 0"):
     """
     compute the matrix series: \sum_{k=0}^{\infty}\frac{x^{k}}{(k+1)!}
     """
-    
+    i = method.find(" ")
+    K = int(method[i+1:])
+    if K == 0:
+        K = 1000
+    method = method[:i]
     if method == "default":
         s = torch.eye(x.size(-1), device=x.device)
         t = x / 2
@@ -168,5 +197,5 @@ def series(x, method="default"):
             t = torch.matmul(x, t) / k
             k = k + 1
     else:
-        s = torch.inverse(x) @ D[method](x) - torch.eye(s.shape[-1])
+        s = torch.inverse(x) @ D[method](x, K) - torch.eye(s.shape[-1])
     return s

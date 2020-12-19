@@ -141,7 +141,7 @@ class Conv1x1(nn.Module):
                 raise ValueError('wrong 1x1 conlution type')
         else:
             if self.conv_type == 'matrixexp':
-                weight = expm(-self.weight, matrix_exp)
+                weight = expm(-self.weight, self.matrix_exp)
                 x = F.conv2d(x, weight.view(self.in_channels, self.in_channels, 1, 1))
                 log_det = torch.diagonal(self.weight).sum().mul(x.size(2) * x.size(3)).mul(-1)
             elif self.conv_type == 'standard':
