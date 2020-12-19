@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from m_layer import MLayer
 from torch.nn.functional import sigmoid
+from torch.distributions import Normal
 
 class SpiralMLayer(nn.Module):
 
@@ -50,3 +51,43 @@ class SpiralDNN(nn.Module):
     def loss(self, x, y):
         x_out = self(x)
         return self.loss_fn(x_out.squeeze(), y.squeeze()), x_out
+
+class PeriodicMLayer(nn.Module):
+
+    def _init_U(self):
+        shape = self.m_layer._rep_to_exp_tensor.shape
+        data = Normal(0., self.init_scale).sample(shape).float()
+        for i in range(shape[1]):
+            data[:, i, i] -= self.init_diag
+        self.m_layer._rep_to_exp_tensor.data = data.to(self.m_layer._rep_to_exp_tensor.data)
+
+    def __init__(self, dim_repr, dim_matrix, init_scale, init_diag, expm, device='cuda'):
+        super().__init__()
+        self.device = device
+        self.dim_repr = dim_repr
+        self.dim_matrix = dim_matrix
+        self.init_scale = init_scale
+        self.init_diag = init_diag
+        # self.bn = nn.BatchNorm1d(1)
+        self.lin1 = nn.Linear(1, self.dim_repr)
+        self.m_layer = MLayer(
+            self.dim_repr, self.dim_matrix, matrix_init='uniform', expm=expm, with_bias=False, device=device)
+        self.flatten = nn.Flatten()
+        self.lin2 = nn.Linear(self.dim_matrix**2, 1)
+        self.loss_fn = nn.MSELoss()
+        self._init_U()
+        self.to(self.device)
+    
+    def forward(self, x):
+        # x_1 = self.lin1(self.bn(x))
+        x_1 = self.lin1(x)
+        # print(x_1)
+        x_m = self.m_layer(x_1)
+        # print(x_m)
+        res = self.lin2(self.flatten(x_m))
+        # print(res)
+        return res
+    
+    def loss(self, x, y):
+        x_out = self(x)
+        return self.loss_fn(x_out, y)
