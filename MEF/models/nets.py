@@ -1,7 +1,7 @@
 import torch.nn as nn
 
-from models.utils import squeeze2d, unsqueeze2d, split2d, unsplit2d
-from models.flows import ActNorm, Conv1x1, CouplingLayer
+from .utils import squeeze2d, unsqueeze2d, split2d, unsplit2d
+from .flows import ActNorm, Conv1x1, CouplingLayer
 
 
 class Model(nn.Module):

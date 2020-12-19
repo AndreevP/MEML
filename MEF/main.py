@@ -6,18 +6,18 @@ import argparse
 
 import numpy as np
 
-import sys
-sys.path.append("../")
+#import sys
+#sys.path.append("../")
 
 import torch
 import torch.optim
 import torchvision
 from torchvision import datasets, transforms
 
-from optim.adam import Adam
-from optim.adamax import Adamax
-from models.nets import Model
-from models.utils import preprocess, postprocess
+from .optim.adam import Adam
+from .optim.adamax import Adamax
+from .models.nets import Model
+from .models.utils import preprocess, postprocess
 
 import os
 
@@ -374,7 +374,6 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=0,
                         help='seed')
     parser.add_argument('--matrix_exp', type=str, default='default 0',
-                        choices=['default', 'optimized_taylor', 'pade', 'second_limit', 'default_full', "pade3"],
                         help='method for computing of matrix exponential (default, optimized_taylor, pade, second_limit, default_full, pade3) + space + number of matmuls (will limit the depth of scaling and squaring) (0 corresponds to infinity)')
     
     parse_args = parser.parse_args()
